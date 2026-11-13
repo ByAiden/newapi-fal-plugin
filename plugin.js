@@ -77,7 +77,7 @@ export const meta = {
     "en": "Run fal.ai model endpoints through fal's queue API, with OpenAI-compatible image and video entry points for popular image and video models",
     "zh": "通过 fal 队列接口调用 fal.ai 模型端点，并为常用图片和视频模型提供 OpenAI 兼容的图片与视频入口"
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "ByAiden",
     "url": "https://github.com/ByAiden"
@@ -397,6 +397,9 @@ export const meta = {
   ]
 };
 
+// The gateway reads the manifest statically, so the code below uses these copies of its values.
+const MODEL_IDS = ["fal-ai/flux/dev","fal-ai/flux/schnell","fal-ai/flux-2-pro","fal-ai/flux-2-pro/edit","fal-ai/nano-banana-pro","fal-ai/nano-banana-pro/edit","fal-ai/bytedance/seedream/v4.5/text-to-image","fal-ai/bytedance/seedream/v4.5/edit","bytedance/seedream/v5/pro/text-to-image","bytedance/seedream/v5/pro/edit","fal-ai/kling-video/v3/pro/text-to-video","fal-ai/kling-video/v3/pro/image-to-video","kling/v4/text-to-video","kling/v4/image-to-video","alibaba/wan-3.0/text-to-video","alibaba/wan-3.0/image-to-video","minimax/h3/text-to-video","minimax/h3/image-to-video","google/gemini-omni-flash/v1.2/text-to-video","google/gemini-omni-flash/v1.2/image-to-video","fal-ai/veo3.1","fal-ai/veo3.1/image-to-video","xai/grok-imagine-video/v1.5/text-to-video","xai/grok-imagine-video/v1.5/image-to-video","fal-endpoint-1","fal-endpoint-2","fal-endpoint-3","fal-endpoint-4","fal-endpoint-5","fal-endpoint-6","fal-endpoint-7","fal-endpoint-8","fal-endpoint-9","fal-endpoint-10"];
+
 function trimmed(value) {
   return String(value === undefined || value === null ? "" : value).trim();
 }
@@ -444,7 +447,7 @@ function profileKind(identity) {
   for (const name of [identity.upstreamModel, identity.model].map(trimmed)) {
     if (IMAGE_ENDPOINTS[name]) return "image";
     if (VIDEO_ENDPOINTS[name]) return "video";
-    if (name && meta.models.includes(name)) return "units";
+    if (name && MODEL_IDS.includes(name)) return "units";
   }
   return "units";
 }
@@ -920,7 +923,7 @@ function protocolEndpoint(identity) {
   try {
     return upstreamEndpoint(identity);
   } catch (error) {
-    if (!trimmed(identity.upstreamModel) && meta.models.includes(trimmed(identity.model))) return trimmed(identity.model);
+    if (!trimmed(identity.upstreamModel) && MODEL_IDS.includes(trimmed(identity.model))) return trimmed(identity.model);
     throw error;
   }
 }

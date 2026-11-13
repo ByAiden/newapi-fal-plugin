@@ -58,7 +58,7 @@ test("manifest follows the community rules", () => {
   assert.equal(meta.apiVersion, 1);
   assert.match(meta.key, /^[a-z0-9]+_fal$/);
   assert.ok(meta.key.length <= 30);
-  assert.equal(meta.version, "1.0.0");
+  assert.equal(meta.version, "1.0.1");
   assert.equal(meta.baseUrl, BASE);
   assert.equal(meta.channelTypes, undefined);
   assert.equal(meta.author.url, "https://github.com/" + meta.author.name);
@@ -361,4 +361,12 @@ test("hooks do not mutate their arguments", () => {
   plugin.extractUsageOnComplete(task, deepFreeze({ status: "SUCCESS" }), data);
   native.requestStatus(deepFreeze({ artifacts: { "image-1": { url: "https://gw/1" } } }), deepFreeze({ task_id: "t", status: "SUCCESS", data: data }));
   imageDecode(deepFreeze({ model: "fal-ai/flux/dev", prompt: "x", size: "1024x1024" }));
+});
+
+test("code never references meta, so the gateway can read it statically", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../plugin.js", import.meta.url), "utf8");
+  const rest = src.slice(src.indexOf("\n};\n", src.indexOf("export const meta = {")));
+  assert.doesNotMatch(rest, /(^|[^A-Za-z0-9_$.])meta([^A-Za-z0-9_$]|$)/m);
+  assert.ok(rest.includes(JSON.stringify(meta.models)));
 });
