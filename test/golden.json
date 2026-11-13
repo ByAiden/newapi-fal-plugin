@@ -1,0 +1,979 @@
+{
+  "cases": [
+    {
+      "name": "generic endpoint submit with Key auth",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "a fox",
+              "num_images": 2
+            },
+            "priority": "low"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/recraft/v3/text-to-image",
+          "upstreamModel": "fal-ai/recraft/v3/text-to-image",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://queue.fal.run/fal-ai/recraft/v3/text-to-image",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Key test-key",
+          "X-Fal-Queue-Priority": "low"
+        },
+        "body": {
+          "prompt": "a fox",
+          "num_images": 2
+        },
+        "action": "generate"
+      }
+    },
+    {
+      "name": "placeholder model sends the mapped endpoint",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-endpoint-1",
+          "upstreamModel": "fal-ai/flux/krea",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://queue.fal.run/fal-ai/flux/krea",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Key test-key"
+        },
+        "body": {
+          "prompt": "x"
+        },
+        "action": "generate"
+      }
+    },
+    {
+      "name": "unmapped placeholder is rejected",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-endpoint-1",
+          "upstreamModel": "fal-endpoint-1",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expectedError": "map it to one"
+    },
+    {
+      "name": "curated image sends explicit size and count",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x",
+              "num_images": 2,
+              "image_size": {
+                "width": 1920,
+                "height": 1080
+              }
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://queue.fal.run/fal-ai/flux/dev",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Key test-key"
+        },
+        "body": {
+          "prompt": "x",
+          "num_images": 2,
+          "image_size": {
+            "width": 1920,
+            "height": 1080
+          }
+        },
+        "action": "text_to_image"
+      }
+    },
+    {
+      "name": "curated image rejects undocumented input",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x",
+              "loras": []
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expectedError": "loras is not a supported input"
+    },
+    {
+      "name": "curated video rejects unsupported duration",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x",
+              "duration": "5s"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/veo3.1",
+          "upstreamModel": "fal-ai/veo3.1",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expectedError": "duration must be one of 4, 6, 8"
+    },
+    {
+      "name": "sync_mode is rejected",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x",
+              "sync_mode": true
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/any/endpoint",
+          "upstreamModel": "fal-ai/any/endpoint",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expectedError": "sync_mode"
+    },
+    {
+      "name": "image reservation facts",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x",
+              "num_images": 2,
+              "resolution": "4K",
+              "enable_web_search": true
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/nano-banana-pro",
+          "upstreamModel": "fal-ai/nano-banana-pro",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "images": 2,
+        "megapixels": 32,
+        "input_images": 0,
+        "large_output": true,
+        "web_search": true,
+        "units": 4
+      }
+    },
+    {
+      "name": "video reservation facts",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x",
+              "start_image_url": "https://a.example/1.png",
+              "duration": 10,
+              "generate_audio": false
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/kling-video/v3/pro/image-to-video",
+          "upstreamModel": "fal-ai/kling-video/v3/pro/image-to-video",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "seconds": 10,
+        "resolution": "1080p",
+        "audio": false,
+        "units": 10
+      }
+    },
+    {
+      "name": "generic reservation in units",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x",
+              "duration": "8"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-endpoint-1",
+          "upstreamModel": "fal-ai/some-video/v1",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "units": 8
+      }
+    },
+    {
+      "name": "submit response keeps the queue app",
+      "hook": "parseSubmitResponse",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        },
+        {
+          "statusCode": 200,
+          "headers": {},
+          "body": {
+            "request_id": "req-1",
+            "status_url": "https://queue.fal.run/fal-ai/flux/requests/req-1/status",
+            "response_url": "https://queue.fal.run/fal-ai/flux/requests/req-1",
+            "queue_position": 0
+          }
+        }
+      ],
+      "expected": {
+        "taskId": "req-1",
+        "taskData": {
+          "request_id": "req-1",
+          "status": "IN_QUEUE",
+          "queue_position": 0
+        },
+        "state": {
+          "app": "/fal-ai/flux",
+          "facts": {
+            "images": 1,
+            "megapixels": 1,
+            "input_images": 0,
+            "large_output": false,
+            "web_search": false,
+            "units": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "submit without request id fails",
+      "hook": "parseSubmitResponse",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        },
+        {
+          "statusCode": 200,
+          "headers": {},
+          "body": {
+            "detail": "x"
+          }
+        }
+      ],
+      "expectedError": "request_id"
+    },
+    {
+      "name": "query polls the status URL",
+      "hook": "buildQueryRequest",
+      "args": [
+        {
+          "taskId": "req-1",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "data": null,
+          "state": {
+            "app": "/fal-ai/flux",
+            "facts": {
+              "images": 2,
+              "megapixels": 4,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 4
+            }
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://queue.fal.run/fal-ai/flux/requests/req-1/status",
+        "method": "GET",
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Key test-key"
+        }
+      }
+    },
+    {
+      "name": "queued",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "req-1",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "data": null,
+          "state": {
+            "app": "/fal-ai/flux",
+            "facts": {
+              "images": 2,
+              "megapixels": 4,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 4
+            }
+          }
+        },
+        {
+          "status": "IN_QUEUE",
+          "request_id": "req-1",
+          "queue_position": 2
+        },
+        {
+          "status": 200,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "status": "QUEUED"
+      }
+    },
+    {
+      "name": "in progress",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "req-1",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "data": null,
+          "state": {
+            "app": "/fal-ai/flux",
+            "facts": {
+              "images": 2,
+              "megapixels": 4,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 4
+            }
+          }
+        },
+        {
+          "status": "IN_PROGRESS",
+          "request_id": "req-1"
+        },
+        {
+          "status": 200,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "status": "IN_PROGRESS"
+      }
+    },
+    {
+      "name": "completed with error fails",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "req-1",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "data": null,
+          "state": {
+            "app": "/fal-ai/flux",
+            "facts": {
+              "images": 2,
+              "megapixels": 4,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 4
+            }
+          }
+        },
+        {
+          "status": "COMPLETED",
+          "request_id": "req-1",
+          "error": "Internal error",
+          "error_type": "runner_disconnected"
+        },
+        {
+          "status": 200,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "status": "FAILURE",
+        "reason": "Internal error (runner_disconnected)"
+      }
+    },
+    {
+      "name": "validation error fails",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "req-1",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "data": null,
+          "state": {
+            "app": "/fal-ai/flux",
+            "facts": {
+              "images": 2,
+              "megapixels": 4,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 4
+            }
+          }
+        },
+        {
+          "detail": [
+            {
+              "msg": "prompt too long"
+            }
+          ]
+        },
+        {
+          "status": 422,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "status": "FAILURE",
+        "reason": "prompt too long"
+      }
+    },
+    {
+      "name": "unrecognized body is unknown",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "req-1",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "data": null,
+          "state": {
+            "app": "/fal-ai/flux",
+            "facts": {
+              "images": 2,
+              "megapixels": 4,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 4
+            }
+          }
+        },
+        "oops",
+        {
+          "status": 200,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "status": "UNKNOWN",
+        "reason": "unrecognized result"
+      }
+    },
+    {
+      "name": "result succeeds and keeps billable units",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "req-1",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "data": null,
+          "state": {
+            "app": "/fal-ai/flux",
+            "facts": {
+              "images": 2,
+              "megapixels": 4,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 4
+            }
+          }
+        },
+        {
+          "images": [
+            {
+              "url": "https://v3.fal.media/files/a.png",
+              "width": 1920,
+              "height": 1080,
+              "content_type": "image/png"
+            }
+          ],
+          "seed": 1
+        },
+        {
+          "status": 200,
+          "headers": {
+            "X-Fal-Billable-Units": "2"
+          }
+        }
+      ],
+      "expected": {
+        "status": "SUCCESS",
+        "progress": "100%",
+        "state": {
+          "app": "/fal-ai/flux",
+          "facts": {
+            "images": 2,
+            "megapixels": 4,
+            "input_images": 0,
+            "large_output": false,
+            "web_search": false,
+            "units": 4
+          },
+          "billable_units": 2
+        }
+      }
+    },
+    {
+      "name": "settlement on delivered images and units",
+      "hook": "extractUsageOnComplete",
+      "args": [
+        {
+          "taskId": "req-1",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "data": null,
+          "state": {
+            "app": "/fal-ai/flux",
+            "facts": {
+              "images": 2,
+              "megapixels": 4,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 4
+            }
+          }
+        },
+        {
+          "status": "SUCCESS",
+          "plugin_state": {
+            "billable_units": 2
+          }
+        },
+        {
+          "images": [
+            {
+              "url": "https://v3.fal.media/files/a.png",
+              "width": 1920,
+              "height": 1080,
+              "content_type": "image/png"
+            }
+          ],
+          "seed": 1
+        }
+      ],
+      "expected": {
+        "images": 1,
+        "megapixels": 2,
+        "input_images": 0,
+        "large_output": false,
+        "web_search": false,
+        "units": 2
+      }
+    },
+    {
+      "name": "video settlement keeps request facts",
+      "hook": "extractUsageOnComplete",
+      "args": [
+        {
+          "taskId": "req-1",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/veo3.1",
+          "upstreamModel": "fal-ai/veo3.1",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "data": null,
+          "state": {
+            "facts": {
+              "seconds": 8,
+              "resolution": "720p",
+              "audio": true,
+              "units": 8
+            }
+          }
+        },
+        {
+          "status": "SUCCESS"
+        },
+        {
+          "video": {
+            "url": "https://v3.fal.media/files/v.mp4",
+            "content_type": "video/mp4"
+          }
+        }
+      ],
+      "expected": {
+        "seconds": 8,
+        "resolution": "720p",
+        "audio": true,
+        "units": 8
+      }
+    },
+    {
+      "name": "artifacts",
+      "hook": "listArtifacts",
+      "args": [
+        {
+          "task_id": "task_1",
+          "status": "SUCCESS",
+          "data": {
+            "images": [
+              {
+                "url": "https://v3.fal.media/files/a.png",
+                "width": 1920,
+                "height": 1080,
+                "content_type": "image/png"
+              }
+            ],
+            "seed": 1,
+            "video": {
+              "url": "https://v3.fal.media/files/v.mp4",
+              "content_type": "video/mp4"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "key": "image-1",
+          "type": "image",
+          "mimeType": "image/png"
+        },
+        {
+          "key": "video",
+          "type": "video",
+          "mimeType": "video/mp4"
+        }
+      ]
+    },
+    {
+      "name": "content request is credentialless",
+      "hook": "buildContentRequest",
+      "args": [
+        {
+          "requestBody": {},
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/veo3.1",
+          "upstreamModel": "fal-ai/veo3.1",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public",
+          "artifactKey": "video",
+          "data": {
+            "video": {
+              "url": "https://v3.fal.media/files/v.mp4",
+              "content_type": "video/mp4"
+            }
+          },
+          "upstreamTaskId": "req-1",
+          "clientRequest": {
+            "method": "GET",
+            "headers": {}
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://v3.fal.media/files/v.mp4",
+        "method": "GET",
+        "credentialless": true
+      }
+    }
+  ]
+}
