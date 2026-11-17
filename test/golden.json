@@ -974,6 +974,485 @@
         "method": "GET",
         "credentialless": true
       }
+    },
+    {
+      "name": "new_api: submit goes to the middle gateway's /fal/requests with Bearer",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "a fox",
+              "num_images": 2,
+              "image_size": "landscape_4_3"
+            },
+            "priority": "low"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "files": [],
+          "publicTaskId": "task_public",
+          "baseUrl": "http://middle.example:3000",
+          "apiKey": "sk-gateway",
+          "authHeader": "Bearer sk-gateway",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {}
+        }
+      ],
+      "expected": {
+        "url": "http://middle.example:3000/byaiden_fal/fal/requests",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-gateway"
+        },
+        "body": {
+          "model": "fal-ai/flux/dev",
+          "input": {
+            "prompt": "a fox",
+            "num_images": 2,
+            "image_size": "landscape_4_3"
+          },
+          "priority": "low"
+        },
+        "action": "text_to_image"
+      }
+    },
+    {
+      "name": "new_api: placeholder model passes unmapped",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-endpoint-2",
+          "upstreamModel": "fal-endpoint-2",
+          "files": [],
+          "publicTaskId": "task_public",
+          "baseUrl": "http://middle.example:3000",
+          "apiKey": "sk-gateway",
+          "authHeader": "Bearer sk-gateway",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {}
+        }
+      ],
+      "expected": {
+        "url": "http://middle.example:3000/byaiden_fal/fal/requests",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-gateway"
+        },
+        "body": {
+          "model": "fal-endpoint-2",
+          "input": {
+            "prompt": "x"
+          }
+        },
+        "action": "generate"
+      }
+    },
+    {
+      "name": "new_api: submit reply from the middle gateway",
+      "hook": "parseSubmitResponse",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "a fox",
+              "num_images": 2,
+              "image_size": "landscape_4_3"
+            },
+            "priority": "low"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "files": [],
+          "publicTaskId": "task_public",
+          "baseUrl": "http://middle.example:3000",
+          "apiKey": "sk-gateway",
+          "authHeader": "Bearer sk-gateway",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {}
+        },
+        {
+          "statusCode": 200,
+          "headers": {},
+          "body": {
+            "request_id": "task_middle",
+            "status": "IN_QUEUE"
+          }
+        }
+      ],
+      "expected": {
+        "taskId": "task_middle",
+        "taskData": {
+          "request_id": "task_middle",
+          "status": "IN_QUEUE"
+        },
+        "state": {
+          "facts": {
+            "images": 2,
+            "megapixels": 2,
+            "input_images": 0,
+            "large_output": false,
+            "web_search": false,
+            "units": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "new_api: query on the middle gateway",
+      "hook": "buildQueryRequest",
+      "args": [
+        {
+          "taskId": "task_middle",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "data": null,
+          "state": {
+            "facts": {
+              "images": 2,
+              "megapixels": 2,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 2
+            }
+          },
+          "baseUrl": "http://middle.example:3000",
+          "apiKey": "sk-gateway",
+          "authHeader": "Bearer sk-gateway",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {}
+        }
+      ],
+      "expected": {
+        "url": "http://middle.example:3000/byaiden_fal/fal/requests/task_middle",
+        "method": "GET",
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-gateway"
+        }
+      }
+    },
+    {
+      "name": "new_api: middle gateway reply in progress",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "task_middle",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "data": null,
+          "state": {
+            "facts": {
+              "images": 2,
+              "megapixels": 2,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 2
+            }
+          },
+          "baseUrl": "http://middle.example:3000",
+          "apiKey": "sk-gateway",
+          "authHeader": "Bearer sk-gateway",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {}
+        },
+        {
+          "request_id": "task_middle",
+          "status": "IN_PROGRESS"
+        },
+        {
+          "status": 200,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "status": "IN_PROGRESS"
+      }
+    },
+    {
+      "name": "new_api: middle gateway reply completed",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "task_middle",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "data": null,
+          "state": {
+            "facts": {
+              "images": 2,
+              "megapixels": 2,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 2
+            }
+          },
+          "baseUrl": "http://middle.example:3000",
+          "apiKey": "sk-gateway",
+          "authHeader": "Bearer sk-gateway",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {}
+        },
+        {
+          "request_id": "task_middle",
+          "status": "COMPLETED",
+          "response": {
+            "images": [
+              {
+                "url": "http://middle.example:3000/v1/tasks/task_middle/artifacts/image-1?sig=1",
+                "width": 1920,
+                "height": 1080,
+                "content_type": "image/png"
+              }
+            ],
+            "seed": 7
+          }
+        },
+        {
+          "status": 200,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "status": "SUCCESS",
+        "progress": "100%"
+      }
+    },
+    {
+      "name": "new_api: middle gateway reply failed",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "task_middle",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "data": null,
+          "state": {
+            "facts": {
+              "images": 2,
+              "megapixels": 2,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 2
+            }
+          },
+          "baseUrl": "http://middle.example:3000",
+          "apiKey": "sk-gateway",
+          "authHeader": "Bearer sk-gateway",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {}
+        },
+        {
+          "request_id": "task_middle",
+          "status": "COMPLETED",
+          "error": "nsfw",
+          "error_type": "content_policy"
+        },
+        {
+          "status": 200,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "status": "FAILURE",
+        "reason": "nsfw (content_policy)"
+      }
+    },
+    {
+      "name": "new_api: settles on the delivered images",
+      "hook": "extractUsageOnComplete",
+      "args": [
+        {
+          "taskId": "task_middle",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "data": null,
+          "state": {
+            "facts": {
+              "images": 2,
+              "megapixels": 2,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 2
+            }
+          },
+          "baseUrl": "http://middle.example:3000",
+          "apiKey": "sk-gateway",
+          "authHeader": "Bearer sk-gateway",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {}
+        },
+        {
+          "status": "SUCCESS"
+        },
+        {
+          "request_id": "task_middle",
+          "status": "COMPLETED",
+          "response": {
+            "images": [
+              {
+                "url": "http://middle.example:3000/v1/tasks/task_middle/artifacts/image-1?sig=1",
+                "width": 1920,
+                "height": 1080,
+                "content_type": "image/png"
+              }
+            ],
+            "seed": 7
+          }
+        }
+      ],
+      "expected": {
+        "images": 1,
+        "megapixels": 2,
+        "input_images": 0,
+        "large_output": false,
+        "web_search": false,
+        "units": 2
+      }
+    },
+    {
+      "name": "new_api: artifacts from the middle gateway reply",
+      "hook": "listArtifacts",
+      "args": [
+        {
+          "status": "SUCCESS",
+          "data": {
+            "request_id": "task_middle",
+            "status": "COMPLETED",
+            "response": {
+              "images": [
+                {
+                  "url": "http://middle.example:3000/v1/tasks/task_middle/artifacts/image-1?sig=1",
+                  "width": 1920,
+                  "height": 1080,
+                  "content_type": "image/png"
+                }
+              ],
+              "seed": 7
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "key": "image-1",
+          "type": "image",
+          "mimeType": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "new_api: download through the middle gateway's signed link",
+      "hook": "buildContentRequest",
+      "args": [
+        {
+          "taskId": "task_middle",
+          "publicTaskId": "task_public",
+          "action": "generate",
+          "model": "fal-ai/flux/dev",
+          "upstreamModel": "fal-ai/flux/dev",
+          "data": {
+            "request_id": "task_middle",
+            "status": "COMPLETED",
+            "response": {
+              "images": [
+                {
+                  "url": "http://middle.example:3000/v1/tasks/task_middle/artifacts/image-1?sig=1",
+                  "width": 1920,
+                  "height": 1080,
+                  "content_type": "image/png"
+                }
+              ],
+              "seed": 7
+            }
+          },
+          "state": {
+            "facts": {
+              "images": 2,
+              "megapixels": 2,
+              "input_images": 0,
+              "large_output": false,
+              "web_search": false,
+              "units": 2
+            }
+          },
+          "baseUrl": "http://middle.example:3000",
+          "apiKey": "sk-gateway",
+          "authHeader": "Bearer sk-gateway",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {},
+          "artifactKey": "image-1",
+          "clientRequest": {
+            "method": "GET",
+            "headers": {}
+          },
+          "upstreamTaskId": "task_middle"
+        }
+      ],
+      "expected": {
+        "url": "http://middle.example:3000/v1/tasks/task_middle/artifacts/image-1/content",
+        "method": "GET",
+        "headers": {
+          "Authorization": "Bearer sk-gateway"
+        }
+      }
     }
   ]
 }

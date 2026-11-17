@@ -91,6 +91,17 @@ curl https://your-gateway.example.com/fal/requests/{request_id} \
   -H "Authorization: Bearer ***"
 ```
 
+## 经由另一个 New API 网关
+
+外层网关转发到持有 fal 渠道的中间网关时，两边都安装本插件：
+
+- 中间网关：按「渠道设置」建任务插件渠道，设置自己的价格以及占位模型的模型映射。
+- 外层网关：新建 **New API** 渠道（类型 60），Base URL 填中间网关地址，密钥填中间网关的令牌，在「上游任务插件」里选择本插件，并添加精选模型和要用的占位模型；占位模型在外层不要做映射（中间网关只接受声明过的模型名，由它自己映射）。
+
+外层插件会把所有请求（包括 OpenAI 请求）以 `{model, input}`（设置了 `priority`、`start_timeout` 时一并带上）发到中间网关的 `POST /byaiden_fal/fal/requests`，并在 `GET /byaiden_fal/fal/requests/{id}` 查询，用 `Authorization: Bearer` 加令牌鉴权（不用 fal Key）。下载走中间网关签名的链接，中间网关的服务器地址（系统设置）必须能被外层网关访问。外层的原生路由和视频返回外层自己的下载地址；OpenAI 图片回复里是中间网关签名的链接，不需要密钥即可下载。
+
+外层计费：`images`、`megapixels`、`input_images`、`large_output`、`web_search`、`seconds`、`resolution`、`audio` 都按请求和交付的文件以相同方式计算，上面按模型写的表达式可以直接使用。fal 的 `X-Fal-Billable-Units` 响应头不会经过中间网关，所以外层的 `units` 只是估算值（精选图片模型按交付的图片计算，其他保持预扣值）。外层请用按模型写的表达式定价，不要用 `units`；占位模型在外层的 `units` 按每次请求、每张请求的图片或每秒请求时长计。
+
 ## 限制
 
 - 插件路由只接受携带网关令牌的 `Authorization: Bearer`；fal 官方 SDK 以 `Key` 认证访问 fal 自身地址，不能直接指向网关使用。
@@ -99,3 +110,5 @@ curl https://your-gateway.example.com/fal/requests/{request_id} \
 - fal 只保留请求结果一小时，结果达到 10 KB 时只保留六分钟，因此网关在状态变为 `COMPLETED` 后立即读取结果。输出文件保存在 fal 的媒体主机上，直到 fal 账户的媒体过期设置将其删除；网关从那里提供下载。
 - 只有位于 fal 媒体主机（`fal.media`、`*.fal.media`、`*.fal.ai`、`*.fal.run` 以及 `storage.googleapis.com/falserverless/`）上的输出文件会成为可下载产物。纯文本输出原样返回。
 - OpenAI Images 接口最多等待网关的协议超时（`TASK_PLUGIN_PROTOCOL_TIMEOUT_SECONDS`，默认 600 秒）。客户端放弃后重试会发起一个新的、单独计费的请求。
+
+经 New API 上游下载文件时，调用中间网关 `/v1/tasks/{id}/artifacts/{key}/content`，携带 Bearer 令牌；直接访问厂商 CDN 时仍不携带密钥。

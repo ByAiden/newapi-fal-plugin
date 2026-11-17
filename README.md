@@ -92,6 +92,17 @@ curl https://your-gateway.example.com/fal/requests/{request_id} \
   -H "Authorization: Bearer ***"
 ```
 
+## Through another New API gateway
+
+When one gateway (outer) forwards to another one (middle) that holds the fal channel, install this plugin on both:
+
+- Middle gateway: the Task Plugin channel from Channel setup, with its own prices and the model mapping of the placeholder models.
+- Outer gateway: a **New API** channel (type 60) with the middle gateway's address as Base URL, one of its tokens as key, and this plugin picked under upstream task plugins. Add the curated models and the placeholders you use; leave the placeholders unmapped there (the middle gateway serves only the declared model names and maps them itself).
+
+The outer plugin sends every request, OpenAI ones included, to the middle gateway's `POST /byaiden_fal/fal/requests` as `{model, input}` (with `priority` and `start_timeout` when set) and polls `GET /byaiden_fal/fal/requests/{id}`, with `Authorization: Bearer` and the token (no fal key). Downloads go through the middle gateway's signed links, so its server address (System Settings) must be reachable from the outer gateway. The outer gateway's native routes and videos show its own download addresses; OpenAI image replies carry the middle gateway's signed links, which work without a key.
+
+Billing on the outer gateway: `images`, `megapixels`, `input_images`, `large_output`, `web_search`, `seconds`, `resolution` and `audio` are computed the same way from the request and the delivered files, so the per-model expressions above work unchanged. fal's `X-Fal-Billable-Units` header does not pass the middle gateway, so on the outer gateway `units` stays the estimate (the curated image models compute it from the delivered images, everything else keeps the reservation). Price the outer gateway with the per-model expressions, not with `units`; for the placeholder models, `units` there is one per request, per requested image or per requested second.
+
 ## Limits
 
 - Native routes take only `Authorization: Bearer` with a gateway token; fal's own SDKs, which send `Key` auth to fal's URLs, cannot point at the gateway unchanged.
@@ -100,3 +111,5 @@ curl https://your-gateway.example.com/fal/requests/{request_id} \
 - fal keeps a request's result for one hour, or six minutes when it is 10 KB or larger, so the gateway reads it as soon as the status turns `COMPLETED`. Output files stay on fal's media hosts until the fal account's media expiration removes them; the gateway serves the downloads from there.
 - Only output files on fal's media hosts (`fal.media`, `*.fal.media`, `*.fal.ai`, `*.fal.run`, and `storage.googleapis.com/falserverless/`) become downloadable artifacts. Outputs that are text only are returned as they are.
 - The OpenAI Images endpoints wait up to the gateway's protocol timeout (`TASK_PLUGIN_PROTOCOL_TIMEOUT_SECONDS`, 600 seconds by default). A client that gives up and retries starts a new, separately charged request.
+
+New API artifact downloads use the middle gateway’s `/v1/tasks/{id}/artifacts/{key}/content` endpoint with Bearer authentication; vendor CDN requests remain credentialless.

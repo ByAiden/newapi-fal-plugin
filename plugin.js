@@ -77,7 +77,7 @@ export const meta = {
     "en": "Run fal.ai model endpoints through fal's queue API, with OpenAI-compatible image and video entry points for popular image and video models",
     "zh": "通过 fal 队列接口调用 fal.ai 模型端点，并为常用图片和视频模型提供 OpenAI 兼容的图片与视频入口"
   },
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": {
     "name": "ByAiden",
     "url": "https://github.com/ByAiden"
@@ -119,6 +119,10 @@ export const meta = {
     "fal-endpoint-8",
     "fal-endpoint-9",
     "fal-endpoint-10"
+  ],
+  "upstreams": [
+    "vendor",
+    "new_api"
   ],
   "fetchMode": "per_task",
   "usageSchema": {
@@ -398,6 +402,7 @@ export const meta = {
 };
 
 // The gateway reads the manifest statically, so the code below uses these copies of its values.
+const PLUGIN_KEY = "byaiden_fal";
 const MODEL_IDS = ["fal-ai/flux/dev","fal-ai/flux/schnell","fal-ai/flux-2-pro","fal-ai/flux-2-pro/edit","fal-ai/nano-banana-pro","fal-ai/nano-banana-pro/edit","fal-ai/bytedance/seedream/v4.5/text-to-image","fal-ai/bytedance/seedream/v4.5/edit","bytedance/seedream/v5/pro/text-to-image","bytedance/seedream/v5/pro/edit","fal-ai/kling-video/v3/pro/text-to-video","fal-ai/kling-video/v3/pro/image-to-video","kling/v4/text-to-video","kling/v4/image-to-video","alibaba/wan-3.0/text-to-video","alibaba/wan-3.0/image-to-video","minimax/h3/text-to-video","minimax/h3/image-to-video","google/gemini-omni-flash/v1.2/text-to-video","google/gemini-omni-flash/v1.2/image-to-video","fal-ai/veo3.1","fal-ai/veo3.1/image-to-video","xai/grok-imagine-video/v1.5/text-to-video","xai/grok-imagine-video/v1.5/image-to-video","fal-endpoint-1","fal-endpoint-2","fal-endpoint-3","fal-endpoint-4","fal-endpoint-5","fal-endpoint-6","fal-endpoint-7","fal-endpoint-8","fal-endpoint-9","fal-endpoint-10"];
 
 function trimmed(value) {
@@ -438,6 +443,27 @@ function upstreamEndpoint(identity) {
     if (name.indexOf("/") > 0) return endpointId(name);
   }
   throw new Error((names[0] || "model") + " is not a fal endpoint id; map it to one such as fal-ai/flux/dev in the channel's model mapping");
+}
+
+// A type-60 New API channel: the same plugin answers on another gateway,
+// whose native /fal/requests routes take {model, input} under the plugin's
+// key with the gateway token as Authorization: Bearer. Hosts that never set
+// ctx.upstream mean fal.
+function viaGateway(ctx) {
+  return !!(ctx && ctx.upstream && ctx.upstream.kind === "new_api");
+}
+
+// The model a request names upstream. fal gets an endpoint id; another
+// gateway also takes a declared placeholder (fal-endpoint-1 to 10), which
+// that gateway's channel maps to an endpoint id.
+function endpointOf(ctx) {
+  if (viaGateway(ctx)) {
+    for (const name of [ctx.upstreamModel, ctx.model].map(trimmed).filter(Boolean)) {
+      if (name.indexOf("/") > 0) return endpointId(name);
+      if (MODEL_IDS.includes(name)) return name;
+    }
+  }
+  return upstreamEndpoint(ctx);
 }
 
 // The usage profile the gateway checks facts against: the profile of the
@@ -749,6 +775,10 @@ function appPath(url, requestId, model) {
   return "/" + parts[0] + "/" + parts[1];
 }
 
+function gatewayRequests(ctx) {
+  return baseOf(ctx) + "/" + PLUGIN_KEY + "/fal/requests";
+}
+
 function queueURLs(ctx) {
   const state = plainObject(ctx.state) || {};
   const app = trimmed(state.app) || appPath("", ctx.taskId, upstreamEndpoint(ctx));
@@ -759,6 +789,14 @@ function queueURLs(ctx) {
 function isQueueStatus(body) {
   const object = plainObject(body);
   return !!object && QUEUE_STATES.includes(object.status) && (present(object.request_id) || present(object.response_url) || present(object.queue_position));
+}
+
+// The fal result inside another gateway's /fal/requests/{id} reply
+// ({request_id, status: "COMPLETED", response}); fal's own status replies
+// never carry response.
+function gatewayResult(body) {
+  const object = plainObject(body);
+  return object && isQueueStatus(object) && object.status === "COMPLETED" && !present(object.error) ? plainObject(object.response) : null;
 }
 
 function errorText(value) {
@@ -818,6 +856,11 @@ const HINTS = { images: "image", image: "image", video: "video", videos: "video"
 // The first video is "video"; the others are numbered per type ("image-1",
 // "video-2", "audio-1", "file-1").
 function artifactEntries(data) {
+  // Another gateway's reply carries the result with that gateway's own
+  // download addresses in place of fal's media URLs.
+  const wrapped = gatewayResult(data);
+  if (wrapped) data = wrapped;
+  const accepts = wrapped ? function (url) { return /^https?:\/\/[^/?#\s]+/i.test(url); } : mediaHost;
   const entries = [];
   const counts = {};
   let firstVideo = false;
@@ -831,7 +874,7 @@ function artifactEntries(data) {
     }
     const object = plainObject(value);
     if (!object) return;
-    if (typeof object.url === "string" && mediaHost(object.url.trim())) {
+    if (typeof object.url === "string" && accepts(object.url.trim())) {
       const type = mediaType(object, hint);
       let key;
       if (type === "video" && !firstVideo) {
@@ -863,7 +906,7 @@ function artifactEntries(data) {
 // The result with each output URL swapped for the gateway's download
 // address.
 function withGatewayURLs(data, artifacts) {
-  const out = copy(data);
+  const out = copy(gatewayResult(data) || data);
   if (!artifacts) return out;
   for (const entry of artifactEntries(data)) {
     const artifact = artifacts[entry.key];
@@ -895,11 +938,12 @@ export const native = {
     return { request_id: task.task_id, status: "IN_QUEUE" };
   },
   requestStatus: function (ctx, task) {
-    const data = plainObject(task.data) || {};
+    const raw = plainObject(task.data) || {};
+    const data = gatewayResult(raw) || raw;
     const out = { request_id: task.task_id };
     if (task.status === "SUCCESS") {
       out.status = "COMPLETED";
-      out.response = withGatewayURLs(data, ctx.artifacts);
+      out.response = withGatewayURLs(raw, ctx.artifacts);
       return out;
     }
     if (task.status === "FAILURE") {
@@ -932,12 +976,24 @@ function protocolEndpoint(identity) {
 // channel sends it to.
 function driverRequest(ctx) {
   const body = plainObject(ctx.requestBody) || {};
-  const model = upstreamEndpoint(ctx);
+  const model = endpointOf(ctx);
   return { model: model, request: falRequest(model, body.input), options: queueOptions(body) };
 }
 
 export function buildSubmitRequest(ctx) {
   const built = driverRequest(ctx);
+  if (viaGateway(ctx)) {
+    const body = { model: built.model, input: built.request.input };
+    if (built.options.priority) body.priority = built.options.priority;
+    if (built.options.start_timeout) body.start_timeout = built.options.start_timeout;
+    return {
+      url: gatewayRequests(ctx),
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: "Bearer " + ctx.apiKey },
+      body: body,
+      action: actionOf(built.model, built.request.input),
+    };
+  }
   const headers = Object.assign({ "Content-Type": "application/json" }, authHeaders(ctx));
   if (built.options.priority) headers["X-Fal-Queue-Priority"] = built.options.priority;
   if (built.options.start_timeout) headers["X-Fal-Request-Start-Timeout"] = String(built.options.start_timeout);
@@ -957,11 +1013,9 @@ export function parseSubmitResponse(ctx, resp) {
   const built = driverRequest(ctx);
   const data = { request_id: id, status: "IN_QUEUE" };
   if (typeof body.queue_position === "number") data.queue_position = body.queue_position;
-  return {
-    taskId: id,
-    taskData: data,
-    state: { app: appPath(body.status_url || body.response_url, id, built.model), facts: built.request.facts },
-  };
+  const state = { facts: built.request.facts };
+  if (!viaGateway(ctx)) state.app = appPath(body.status_url || body.response_url, id, built.model);
+  return { taskId: id, taskData: data, state: state };
 }
 
 export function extractUsage(ctx) {
@@ -973,6 +1027,9 @@ export function extractUsage(ctx) {
 // Polls the status; once fal reports the request complete without an error,
 // the query reads the result instead, which becomes the task's data.
 export function buildQueryRequest(ctx) {
+  if (viaGateway(ctx)) {
+    return { url: gatewayRequests(ctx) + "/" + encodeURIComponent(ctx.taskId), method: "GET", headers: { Accept: "application/json", Authorization: "Bearer " + ctx.apiKey } };
+  }
   const urls = queueURLs(ctx);
   let url = urls.status;
   try {
@@ -1003,17 +1060,17 @@ export function parseTaskResult(ctx, body, response) {
     if (status === 499) return { status: "FAILURE", reason: "request was cancelled" };
     return { status: "FAILURE", reason: failureReason(body) };
   }
-  if (isQueueStatus(body)) {
+  if (isQueueStatus(body) && !gatewayResult(body)) {
     if (body.status === "IN_QUEUE") return { status: "QUEUED" };
     if (body.status === "IN_PROGRESS") return { status: "IN_PROGRESS" };
     if (present(body.error)) return { status: "FAILURE", reason: failureReason(body) };
     // Complete; the next poll reads the result.
     return { status: "IN_PROGRESS", progress: "99%" };
   }
-  const data = plainObject(body);
+  const data = gatewayResult(body) || plainObject(body);
   if (!data) return { status: "UNKNOWN", reason: "unrecognized result" };
-  const model = upstreamEndpoint(ctx);
-  if ((IMAGE_ENDPOINTS[model] || VIDEO_ENDPOINTS[model]) && !artifactEntries(data).length) return { status: "FAILURE", reason: "fal returned no output file" };
+  const model = endpointOf(ctx);
+  if ((IMAGE_ENDPOINTS[model] || VIDEO_ENDPOINTS[model]) && !artifactEntries(body).length) return { status: "FAILURE", reason: "fal returned no output file" };
   const result = { status: "SUCCESS", progress: "100%" };
   const units = billableUnits(response && response.headers);
   if (units) result.state = Object.assign({}, plainObject(ctx.state) || {}, { billable_units: units });
@@ -1025,7 +1082,7 @@ export function parseTaskResult(ctx, body, response) {
 // this with the result it just parsed (its plugin_state holds the units)
 // and the result body.
 export function extractUsageOnComplete(task, result, data) {
-  const output = plainObject(data);
+  const output = gatewayResult(data) || plainObject(data);
   if (!output || isQueueStatus(output)) return null;
   const parsed = plainObject(result) || {};
   if (parsed.status && parsed.status !== "SUCCESS") return null;
@@ -1038,7 +1095,7 @@ export function extractUsageOnComplete(task, result, data) {
   const model = trimmed(task.upstreamModel) || trimmed(task.model);
   const facts = Object.assign({}, profileFacts(kind, reserved));
   if (kind === "image" && IMAGE_ENDPOINTS[model]) {
-    const images = artifactEntries(output).filter(function (entry) {
+    const images = artifactEntries(data).filter(function (entry) {
       return entry.type === "image";
     });
     if (images.length) {
@@ -1073,8 +1130,17 @@ export function listArtifacts(task) {
 }
 
 // fal's media URLs are public; they stay until the account's media
-// expiration setting removes them.
+// expiration setting removes them. Through another gateway they are that
+// gateway's signed download addresses.
 export function buildContentRequest(ctx) {
+  if (viaGateway(ctx)) {
+    if (!ctx.upstreamTaskId) throw new Error("artifact_not_found");
+    return {
+      url: String(ctx.baseUrl || "").replace(/\/+$/, "") + "/v1/tasks/" + encodeURIComponent(ctx.upstreamTaskId) + "/artifacts/" + encodeURIComponent(ctx.artifactKey) + "/content",
+      method: (ctx.clientRequest && ctx.clientRequest.method) || "GET",
+      headers: { Authorization: "Bearer " + ctx.apiKey },
+    };
+  }
   for (const entry of artifactEntries(ctx.data)) {
     if (entry.key === ctx.artifactKey) return { url: entry.url, method: ctx.clientRequest.method, credentialless: true };
   }

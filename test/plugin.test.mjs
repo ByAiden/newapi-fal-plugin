@@ -58,7 +58,12 @@ test("manifest follows the community rules", () => {
   assert.equal(meta.apiVersion, 1);
   assert.match(meta.key, /^[a-z0-9]+_fal$/);
   assert.ok(meta.key.length <= 30);
-  assert.equal(meta.version, "1.0.1");
+  assert.match(meta.version, /^\d+\.\d+\.\d+$/);
+  for (const name of ["CHANGELOG.md", "CHANGELOG.zh-CN.md"]) {
+    const changelog = readFileSync(new URL("../" + name, import.meta.url), "utf8");
+    assert.match(changelog, new RegExp("version: \"?" + meta.version.replace(/\./g, "\\.") + "\"?"));
+    assert.ok(changelog.includes("## [" + meta.version + "]"));
+  }
   assert.equal(meta.baseUrl, BASE);
   assert.equal(meta.channelTypes, undefined);
   assert.equal(meta.author.url, "https://github.com/" + meta.author.name);
@@ -369,4 +374,96 @@ test("code never references meta, so the gateway can read it statically", async 
   const rest = src.slice(src.indexOf("\n};\n", src.indexOf("export const meta = {")));
   assert.doesNotMatch(rest, /(^|[^A-Za-z0-9_$.])meta([^A-Za-z0-9_$]|$)/m);
   assert.ok(rest.includes(JSON.stringify(meta.models)));
+});
+
+// --- through another New API gateway (type-60 channel) -----------------------
+
+const GW = "http://middle.example:3000";
+const GW_PREFIX = GW + "/" + meta.key;
+const viaGW = { baseUrl: GW, apiKey: "sk-gateway", authHeader: "Bearer sk-gateway", upstream: { kind: "new_api" } };
+
+test("meta declares the New API upstream", () => {
+  assert.deepEqual(meta.upstreams, ["vendor", "new_api"]);
+});
+
+test("new_api: submit goes to the middle gateway's native /fal/requests with Bearer only", () => {
+  const routes = new Set(meta.routes.map((r) => r.method + " " + r.path));
+  const intent = decodeNative({ model: "fal-ai/flux/dev", input: { prompt: "a fox", num_images: 2 }, priority: "low", start_timeout: 30 });
+  const request = plugin.buildSubmitRequest(driver(intent, viaGW));
+  assert.equal(request.url, GW_PREFIX + "/fal/requests");
+  assert.ok(routes.has("POST " + request.url.slice(GW_PREFIX.length)));
+  assert.deepEqual(request.headers, { "Content-Type": "application/json", Accept: "application/json", Authorization: "Bearer sk-gateway" });
+  assert.deepEqual(request.body, { model: "fal-ai/flux/dev", input: plugin.buildSubmitRequest(driver(intent)).body, priority: "low", start_timeout: 30 });
+  // The middle gateway decodes it on its native route and sends fal the same input.
+  const middle = decodeNative(JSON.parse(JSON.stringify(request.body)));
+  const vendor = plugin.buildSubmitRequest(driver(middle));
+  assert.deepEqual(vendor.body, plugin.buildSubmitRequest(driver(intent)).body);
+  assert.deepEqual(plugin.extractUsage(driver(middle)), plugin.extractUsage(driver(intent, viaGW)), "both layers reserve the same facts");
+  // OpenAI requests on the outer gateway become native requests on the middle one.
+  const video = plugin.buildSubmitRequest(driver(videoDecode({ model: "fal-ai/veo3.1", prompt: "a fox", seconds: "4", size: "1280x720" }), viaGW));
+  assert.equal(video.body.model, "fal-ai/veo3.1");
+  assert.deepEqual(decodeNative(video.body).requestBody, { input: video.body.input });
+});
+
+test("new_api: a placeholder model passes to the middle gateway, which maps it", () => {
+  const intent = decodeNative({ model: "fal-endpoint-2", input: { prompt: "x" } });
+  const request = plugin.buildSubmitRequest(driver(intent, viaGW));
+  assert.equal(request.body.model, "fal-endpoint-2");
+  assert.deepEqual(plugin.extractUsage(driver(intent, viaGW)), { units: 1 });
+  const parsed = plugin.parseSubmitResponse(driver(intent, viaGW), { statusCode: 200, headers: {}, body: native.requestSubmitted({}, { task_id: "task_middle", data: {} }) });
+  assert.deepEqual(parsed, { taskId: "task_middle", taskData: { request_id: "task_middle", status: "IN_QUEUE" }, state: { facts: { units: 1 } } });
+  const q = queryCtx("fal-endpoint-2", parsed.state, Object.assign({ taskId: "task_middle" }, viaGW));
+  assert.equal(plugin.parseTaskResult(q, native.requestStatus({ artifacts: {} }, { task_id: "task_middle", status: "SUCCESS", data: { output: "text" } }), { status: 200, headers: {} }).status, "SUCCESS");
+});
+
+test("new_api: poll, settle and download through the middle gateway's replies", () => {
+  fetched.length = 0;
+  fetchImpl = () => {
+    throw new Error("no prefetch expected");
+  };
+  const intent = imageDecode({ model: "fal-ai/flux/dev", prompt: "a fox", n: 2, size: "1920x1080" });
+  const ctx = driver(intent, viaGW);
+  const reserved = plugin.extractUsage(ctx);
+  const parsed = plugin.parseSubmitResponse(ctx, { statusCode: 200, headers: {}, body: native.requestSubmitted({}, { task_id: "task_middle", data: {} }) });
+  assert.equal(parsed.taskId, "task_middle");
+  const q = queryCtx("fal-ai/flux/dev", parsed.state, Object.assign({ taskId: "task_middle" }, viaGW));
+  assert.deepEqual(plugin.buildQueryRequest(q), { url: GW_PREFIX + "/fal/requests/task_middle", method: "GET", headers: { Accept: "application/json", Authorization: "Bearer sk-gateway" } });
+  assert.ok(meta.routes.some((r) => r.type === "query" && r.path === "/fal/requests/:request_id"));
+  assert.equal(fetched.length, 0);
+
+  const vendorResult = { images: [{ url: "https://v3.fal.media/files/a.png", width: 1920, height: 1080, content_type: "image/png" }, { url: "https://v3.fal.media/files/b.png", width: 1920, height: 1080, content_type: "image/png" }], seed: 7 };
+  const signed = (k) => GW + "/v1/tasks/task_middle/artifacts/" + k + "?sig=1";
+  const status = (s, data) => native.requestStatus({ artifacts: s === "SUCCESS" ? { "image-1": { key: "image-1", type: "image", url: signed("image-1") }, "image-2": { key: "image-2", type: "image", url: signed("image-2") } } : {} }, { task_id: "task_middle", status: s, data: data });
+  assert.deepEqual(plugin.parseTaskResult(q, status("QUEUED", { status: "IN_QUEUE", request_id: "r" }), { status: 200, headers: {} }), { status: "QUEUED" });
+  assert.deepEqual(plugin.parseTaskResult(q, status("IN_PROGRESS", { status: "IN_PROGRESS", request_id: "r" }), { status: 200, headers: {} }), { status: "IN_PROGRESS" });
+  const failed = plugin.parseTaskResult(q, status("FAILURE", { status: "IN_PROGRESS", request_id: "r" }), { status: 200, headers: {} });
+  assert.equal(failed.status, "FAILURE");
+  const done = status("SUCCESS", vendorResult);
+  const result = plugin.parseTaskResult(q, done, { status: 200, headers: {} });
+  assert.deepEqual(result, { status: "SUCCESS", progress: "100%" });
+  // The facts follow the delivered images exactly as on the middle gateway; fal's
+  // billable-units header does not pass the middle gateway.
+  const settled = plugin.extractUsageOnComplete(q, result, done);
+  const vendorQ = queryCtx("fal-ai/flux/dev", { app: "/fal-ai/flux", facts: reserved });
+  assert.deepEqual(settled, plugin.extractUsageOnComplete(vendorQ, { status: "SUCCESS" }, vendorResult));
+  assert.equal(settled.images, 2);
+  const task = { status: "SUCCESS", data: done };
+  assert.deepEqual(plugin.listArtifacts(task), [{ key: "image-1", type: "image", mimeType: "image/png" }, { key: "image-2", type: "image", mimeType: "image/png" }]);
+  assert.deepEqual(plugin.buildContentRequest(Object.assign({}, q, { artifactKey: "image-2", upstreamTaskId: "task_middle", data: done, clientRequest: { method: "GET", headers: {} } })), { url: GW + "/v1/tasks/task_middle/artifacts/image-2/content", method: "GET", headers: { Authorization: "Bearer sk-gateway" } });
+  assert.deepEqual(protocols.openai_image.render({}, task), { data: [{ url: signed("image-1") }, { url: signed("image-2") }] });
+  // The outer gateway's own presenter swaps in its own download addresses.
+  const outerLinks = { "image-1": { key: "image-1", type: "image", url: "https://outer.example/a1" }, "image-2": { key: "image-2", type: "image", url: "https://outer.example/a2" } };
+  const outerReply = native.requestStatus({ artifacts: outerLinks }, { task_id: "task_outer", status: "SUCCESS", data: done });
+  assert.deepEqual(outerReply.response.images.map((i) => i.url), ["https://outer.example/a1", "https://outer.example/a2"]);
+  assert.equal(outerReply.response.images[0].width, 1920);
+  assert.ok(!JSON.stringify(outerReply).includes("middle.example"));
+  const again = native.requestStatus({ artifacts: {} }, { task_id: "task_outer", status: "SUCCESS", data: done });
+  assert.deepEqual(again.response, done.response);
+});
+
+test("new_api: a failed middle request fails the outer task", () => {
+  const q = queryCtx("fal-ai/flux/dev", { facts: { units: 1 } }, Object.assign({ taskId: "task_middle" }, viaGW));
+  const body = native.requestStatus({ artifacts: {} }, { task_id: "task_middle", status: "FAILURE", data: { status: "COMPLETED", request_id: "r", error: "nsfw", error_type: "content_policy" } });
+  assert.deepEqual(plugin.parseTaskResult(q, body, { status: 200, headers: {} }).status, "FAILURE");
+  assert.equal(plugin.extractUsageOnComplete(q, { status: "FAILURE" }, body), null);
 });
