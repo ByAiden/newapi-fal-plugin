@@ -38,24 +38,24 @@ On curated models the plugin checks the input against the model's documented fie
 
 Each model has its own usage fields; save a task expression per model. Prices are USD, and the gateway charges USD x 500000 quota before group ratios.
 
-- Image models report `images` (output images), `megapixels` (each image rounded up to whole megapixels of 1024 x 1024 pixels, then summed), `input_images`, `large_output` (Nano Banana Pro at `4K`, Seedream 5.0 Pro above 1536 x 1536), `web_search` and `units`.
+- Image models report `images` (output images), `megapixels` (each image rounded up to whole megapixels of 1024 x 1024 pixels, then summed), `input_images`, `extra_input_images` (the input images after the first, counted once per output image: fal charges every output image of a Seedream 5.0 Pro edit for each additional input image), `large_output` (Nano Banana Pro at `4K`, Seedream 5.0 Pro above 1536 x 1536), `web_search` and `units`.
 - Video models report `seconds`, `resolution` (`360p`, `480p`, `720p`, `768p`, `1080p`, `2k`, `4k`), `audio` and `units`.
 - The placeholder models report `units` only.
 - `units` is fal's own billing unit count. fal returns it in the `X-Fal-Billable-Units` header of the result, already counted in the unit the endpoint is priced in, so the cost is `units` times the endpoint's unit price from [fal's pricing API](https://fal.ai/docs/documentation/model-apis/pricing) or the model page. Until the result arrives, the plugin reserves an estimate: requested images, megapixels or seconds on curated models, and on placeholders the requested `num_images`, the requested `duration` in seconds, or one unit.
 - When the task finishes, images settle on the images fal delivered and their real sizes, and `units` settles on fal's header when present. Failed requests are refunded in full; fal does not charge them either.
 
-Recommended expressions at fal's list prices on the day of writing (check each model page before use, and add your margin):
+Recommended expressions at fal's list prices on the day of writing (check each model page before use). Each one has a single number per usage field, so the gateway's model page shows it as a price table; add your margin by multiplying those numbers rather than appending a factor such as `* 1.2`, which stops the page from showing the table:
 
 | Model | Expression |
 | --- | --- |
 | `fal-ai/flux/dev` | `tier("base", u("megapixels") * 0.025)` |
 | `fal-ai/flux/schnell` | `tier("base", u("megapixels") * 0.003)` |
-| `fal-ai/flux-2-pro` | `tier("base", (u("images") + u("megapixels")) * 0.015)` |
-| `fal-ai/flux-2-pro/edit` | `tier("base", (u("images") + u("megapixels") + u("input_images")) * 0.015)` |
+| `fal-ai/flux-2-pro` | `tier("base", u("images") * 0.015 + u("megapixels") * 0.015)` |
+| `fal-ai/flux-2-pro/edit` | `tier("base", u("images") * 0.015 + u("megapixels") * 0.015 + u("input_images") * 0.015)` |
 | `fal-ai/nano-banana-pro`, `.../edit` | `u("large_output") == true && u("web_search") == true ? tier("4k search", u("images") * 0.3 + 0.015) : u("large_output") == true ? tier("4k", u("images") * 0.3) : u("web_search") == true ? tier("search", u("images") * 0.15 + 0.015) : tier("standard", u("images") * 0.15)` |
 | `fal-ai/bytedance/seedream/v4.5/...` (both) | `tier("base", u("images") * 0.04)` |
 | `bytedance/seedream/v5/pro/text-to-image` | `u("large_output") == true ? tier("2k", u("images") * 0.135) : tier("1.5k", u("images") * 0.0675)` |
-| `bytedance/seedream/v5/pro/edit` | `u("large_output") == true ? tier("2k", u("images") * (0.135 + 0.0045 * (u("input_images") - 1))) : tier("1.5k", u("images") * (0.0675 + 0.0045 * (u("input_images") - 1)))` |
+| `bytedance/seedream/v5/pro/edit` | `u("large_output") == true ? tier("2k", u("images") * 0.135 + u("extra_input_images") * 0.0045) : tier("1.5k", u("images") * 0.0675 + u("extra_input_images") * 0.0045)` |
 | `fal-ai/kling-video/v3/pro/...` (both) | `u("audio") == true ? tier("audio", u("seconds") * 0.168) : tier("muted", u("seconds") * 0.112)` |
 | `kling/v4/...` (both) | `u("resolution") == "1080p" ? tier("1080p", u("seconds") * 0.235) : tier("720p", u("seconds") * 0.157)` |
 | `alibaba/wan-3.0/...` (both) | `u("resolution") == "1080p" ? tier("1080p", u("seconds") * 0.2) : u("resolution") == "720p" ? tier("720p", u("seconds") * 0.1) : tier("480p", u("seconds") * 0.05)` |
@@ -101,7 +101,7 @@ When one gateway (outer) forwards to another one (middle) that holds the fal cha
 
 The outer plugin sends every request, OpenAI ones included, to the middle gateway's `POST /byaiden_fal/fal/requests` as `{model, input}` (with `priority` and `start_timeout` when set) and polls `GET /byaiden_fal/fal/requests/{id}`, with `Authorization: Bearer` and the token (no fal key). Downloads go through the middle gateway's signed links, so its server address (System Settings) must be reachable from the outer gateway. The outer gateway's native routes and videos show its own download addresses; OpenAI image replies carry the middle gateway's signed links, which work without a key.
 
-Billing on the outer gateway: `images`, `megapixels`, `input_images`, `large_output`, `web_search`, `seconds`, `resolution` and `audio` are computed the same way from the request and the delivered files, so the per-model expressions above work unchanged. fal's `X-Fal-Billable-Units` header does not pass the middle gateway, so on the outer gateway `units` stays the estimate (the curated image models compute it from the delivered images, everything else keeps the reservation). Price the outer gateway with the per-model expressions, not with `units`; for the placeholder models, `units` there is one per request, per requested image or per requested second.
+Billing on the outer gateway: `images`, `megapixels`, `input_images`, `extra_input_images`, `large_output`, `web_search`, `seconds`, `resolution` and `audio` are computed the same way from the request and the delivered files, so the per-model expressions above work unchanged. fal's `X-Fal-Billable-Units` header does not pass the middle gateway, so on the outer gateway `units` stays the estimate (the curated image models compute it from the delivered images, everything else keeps the reservation). Price the outer gateway with the per-model expressions, not with `units`; for the placeholder models, `units` there is one per request, per requested image or per requested second.
 
 ## Limits
 

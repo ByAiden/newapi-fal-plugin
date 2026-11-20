@@ -37,24 +37,24 @@ fal 路由也可在插件前缀下访问，如 `/byaiden_fal/fal/requests`。客
 
 每个模型有各自的用量字段，请为每个模型分别保存任务表达式。价格单位为美元，网关按 美元 x 500000 扣减额度（未计分组倍率）。
 
-- 图片模型报告 `images`（输出图片数）、`megapixels`（每张图片按 1024 x 1024 像素为一百万像素向上取整后求和）、`input_images`、`large_output`（Nano Banana Pro 的 `4K`，Seedream 5.0 Pro 超过 1536 x 1536）、`web_search` 和 `units`。
+- 图片模型报告 `images`（输出图片数）、`megapixels`（每张图片按 1024 x 1024 像素为一百万像素向上取整后求和）、`input_images`、`extra_input_images`（第一张之后的输入图片数，按每张输出图各计一次：Seedream 5.0 Pro 编辑的每张输出图都按每张额外输入图收费）、`large_output`（Nano Banana Pro 的 `4K`，Seedream 5.0 Pro 超过 1536 x 1536）、`web_search` 和 `units`。
 - 视频模型报告 `seconds`、`resolution`（`360p`、`480p`、`720p`、`768p`、`1080p`、`2k`、`4k`）、`audio` 和 `units`。
 - 占位模型只报告 `units`。
 - `units` 是 fal 自己的计费单位数。fal 在结果的 `X-Fal-Billable-Units` 响应头中返回它，且已按该端点的计价单位计数，因此费用为 `units` 乘以该端点的单价（见 [fal 定价接口](https://fal.ai/docs/documentation/model-apis/pricing)或模型页面）。结果返回前，插件按估算预扣：精选模型按请求的图片数、百万像素或秒数；占位模型按请求的 `num_images`、请求的 `duration` 秒数，否则按一个单位。
 - 任务完成时，图片按 fal 实际交付的张数和真实尺寸结算，`units` 有响应头时按其结算。失败的请求全额退款，fal 对失败请求也不收费。
 
-按撰写当日 fal 公布价格给出的推荐表达式（使用前请核对各模型页面，并加上你的利润）：
+按撰写当日 fal 公布价格给出的推荐表达式（使用前请核对各模型页面）。每个用量字段只有一个数字，模型广场会把它显示成价格表；加价时把这些数字乘以倍率，不要在末尾追加 `* 1.2` 之类的系数，否则模型广场无法显示价格表：
 
 | 模型 | 表达式 |
 | --- | --- |
 | `fal-ai/flux/dev` | `tier("base", u("megapixels") * 0.025)` |
 | `fal-ai/flux/schnell` | `tier("base", u("megapixels") * 0.003)` |
-| `fal-ai/flux-2-pro` | `tier("base", (u("images") + u("megapixels")) * 0.015)` |
-| `fal-ai/flux-2-pro/edit` | `tier("base", (u("images") + u("megapixels") + u("input_images")) * 0.015)` |
+| `fal-ai/flux-2-pro` | `tier("base", u("images") * 0.015 + u("megapixels") * 0.015)` |
+| `fal-ai/flux-2-pro/edit` | `tier("base", u("images") * 0.015 + u("megapixels") * 0.015 + u("input_images") * 0.015)` |
 | `fal-ai/nano-banana-pro`、`.../edit` | `u("large_output") == true && u("web_search") == true ? tier("4k search", u("images") * 0.3 + 0.015) : u("large_output") == true ? tier("4k", u("images") * 0.3) : u("web_search") == true ? tier("search", u("images") * 0.15 + 0.015) : tier("standard", u("images") * 0.15)` |
 | `fal-ai/bytedance/seedream/v4.5/...`（两者） | `tier("base", u("images") * 0.04)` |
 | `bytedance/seedream/v5/pro/text-to-image` | `u("large_output") == true ? tier("2k", u("images") * 0.135) : tier("1.5k", u("images") * 0.0675)` |
-| `bytedance/seedream/v5/pro/edit` | `u("large_output") == true ? tier("2k", u("images") * (0.135 + 0.0045 * (u("input_images") - 1))) : tier("1.5k", u("images") * (0.0675 + 0.0045 * (u("input_images") - 1)))` |
+| `bytedance/seedream/v5/pro/edit` | `u("large_output") == true ? tier("2k", u("images") * 0.135 + u("extra_input_images") * 0.0045) : tier("1.5k", u("images") * 0.0675 + u("extra_input_images") * 0.0045)` |
 | `fal-ai/kling-video/v3/pro/...`（两者） | `u("audio") == true ? tier("audio", u("seconds") * 0.168) : tier("muted", u("seconds") * 0.112)` |
 | `kling/v4/...`（两者） | `u("resolution") == "1080p" ? tier("1080p", u("seconds") * 0.235) : tier("720p", u("seconds") * 0.157)` |
 | `alibaba/wan-3.0/...`（两者） | `u("resolution") == "1080p" ? tier("1080p", u("seconds") * 0.2) : u("resolution") == "720p" ? tier("720p", u("seconds") * 0.1) : tier("480p", u("seconds") * 0.05)` |
@@ -100,7 +100,7 @@ curl https://your-gateway.example.com/fal/requests/{request_id} \
 
 外层插件会把所有请求（包括 OpenAI 请求）以 `{model, input}`（设置了 `priority`、`start_timeout` 时一并带上）发到中间网关的 `POST /byaiden_fal/fal/requests`，并在 `GET /byaiden_fal/fal/requests/{id}` 查询，用 `Authorization: Bearer` 加令牌鉴权（不用 fal Key）。下载走中间网关签名的链接，中间网关的服务器地址（系统设置）必须能被外层网关访问。外层的原生路由和视频返回外层自己的下载地址；OpenAI 图片回复里是中间网关签名的链接，不需要密钥即可下载。
 
-外层计费：`images`、`megapixels`、`input_images`、`large_output`、`web_search`、`seconds`、`resolution`、`audio` 都按请求和交付的文件以相同方式计算，上面按模型写的表达式可以直接使用。fal 的 `X-Fal-Billable-Units` 响应头不会经过中间网关，所以外层的 `units` 只是估算值（精选图片模型按交付的图片计算，其他保持预扣值）。外层请用按模型写的表达式定价，不要用 `units`；占位模型在外层的 `units` 按每次请求、每张请求的图片或每秒请求时长计。
+外层计费：`images`、`megapixels`、`input_images`、`extra_input_images`、`large_output`、`web_search`、`seconds`、`resolution`、`audio` 都按请求和交付的文件以相同方式计算，上面按模型写的表达式可以直接使用。fal 的 `X-Fal-Billable-Units` 响应头不会经过中间网关，所以外层的 `units` 只是估算值（精选图片模型按交付的图片计算，其他保持预扣值）。外层请用按模型写的表达式定价，不要用 `units`；占位模型在外层的 `units` 按每次请求、每张请求的图片或每秒请求时长计。
 
 ## 限制
 

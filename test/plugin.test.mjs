@@ -20,7 +20,7 @@ const source = readFileSync(new URL("../plugin.js", import.meta.url), "utf8");
 
 const BASE = "https://queue.fal.run";
 const KEY = "fal-test-key";
-const IMAGE_FACTS = ["images", "megapixels", "input_images", "large_output", "web_search", "units"];
+const IMAGE_FACTS = ["images", "megapixels", "input_images", "extra_input_images", "large_output", "web_search", "units"];
 const VIDEO_FACTS = ["seconds", "resolution", "audio", "units"];
 
 function decodeNative(body, extra) {
@@ -139,7 +139,7 @@ test("curated image inputs are whitelisted and priced from the request", () => {
   const flux = decodeNative({ model: "fal-ai/flux/dev", input: { prompt: "x", image_size: "square_hd", num_images: 2 } });
   assert.equal(flux.action, "text_to_image");
   assert.deepEqual(plugin.buildSubmitRequest(driver(flux)).body, { prompt: "x", image_size: "square_hd", num_images: 2 });
-  assert.deepEqual(plugin.extractUsage(driver(flux)), { images: 2, megapixels: 2, input_images: 0, large_output: false, web_search: false, units: 2 });
+  assert.deepEqual(plugin.extractUsage(driver(flux)), { images: 2, megapixels: 2, input_images: 0, extra_input_images: 0, large_output: false, web_search: false, units: 2 });
   // The default landscape_4_3 is sent explicitly.
   const plain = decodeNative({ model: "fal-ai/flux/schnell", input: { prompt: "x" } });
   assert.deepEqual(plain.requestBody.input, { prompt: "x", image_size: "landscape_4_3", num_images: 1 });
@@ -154,10 +154,10 @@ test("curated image inputs are whitelisted and priced from the request", () => {
 test("nano banana pro reserves 4K and web search", () => {
   const intent = decodeNative({ model: "fal-ai/nano-banana-pro", input: { prompt: "x", num_images: 2, resolution: "4k", enable_web_search: true } });
   assert.equal(intent.requestBody.input.resolution, "4K");
-  assert.deepEqual(plugin.extractUsage(driver(intent)), { images: 2, megapixels: 32, input_images: 0, large_output: true, web_search: true, units: 4 });
+  assert.deepEqual(plugin.extractUsage(driver(intent)), { images: 2, megapixels: 32, input_images: 0, extra_input_images: 0, large_output: true, web_search: true, units: 4 });
   const edit = decodeNative({ model: "fal-ai/nano-banana-pro/edit", input: { prompt: "x", image_urls: ["https://a/1.png", "data:image/png;base64,aGk="] } });
   assert.equal(edit.action, "image_edit");
-  assert.deepEqual(plugin.extractUsage(driver(edit)), { images: 1, megapixels: 1, input_images: 2, large_output: false, web_search: false, units: 1 });
+  assert.deepEqual(plugin.extractUsage(driver(edit)), { images: 1, megapixels: 1, input_images: 2, extra_input_images: 1, large_output: false, web_search: false, units: 1 });
   assert.throws(() => decodeNative({ model: "fal-ai/nano-banana-pro/edit", input: { prompt: "x" } }), /image_urls is required/);
   assert.throws(() => decodeNative({ model: "fal-ai/nano-banana-pro/edit", input: { prompt: "x", image_urls: ["ftp://a"] } }), /http\(s\) URL or a data URI/);
 });
@@ -165,15 +165,40 @@ test("nano banana pro reserves 4K and web search", () => {
 test("seedream sizes and multi-image runs", () => {
   const v5 = decodeNative({ model: "bytedance/seedream/v5/pro/text-to-image", input: { prompt: "x" } });
   assert.equal(v5.requestBody.input.image_size, "auto_2K");
-  assert.deepEqual(plugin.extractUsage(driver(v5)), { images: 1, megapixels: 4, input_images: 0, large_output: true, web_search: false, units: 2 });
+  assert.deepEqual(plugin.extractUsage(driver(v5)), { images: 1, megapixels: 4, input_images: 0, extra_input_images: 0, large_output: true, web_search: false, units: 2 });
   const small = decodeNative({ model: "bytedance/seedream/v5/pro/text-to-image", input: { prompt: "x", image_size: "auto_1.5K", num_images: 3 } });
-  assert.deepEqual(plugin.extractUsage(driver(small)), { images: 3, megapixels: 9, input_images: 0, large_output: false, web_search: false, units: 3 });
+  assert.deepEqual(plugin.extractUsage(driver(small)), { images: 3, megapixels: 9, input_images: 0, extra_input_images: 0, large_output: false, web_search: false, units: 3 });
   const v45 = decodeNative({ model: "fal-ai/bytedance/seedream/v4.5/text-to-image", input: { prompt: "x", num_images: 2, max_images: 3 } });
   assert.deepEqual(v45.requestBody.input.image_size, { width: 2048, height: 2048 });
   assert.equal(plugin.extractUsage(driver(v45)).images, 6);
   const flux2 = decodeNative({ model: "fal-ai/flux-2-pro/edit", input: { prompt: "x", image_urls: ["https://a/1.png"] } });
   assert.equal(flux2.requestBody.input.image_size, "auto");
-  assert.deepEqual(plugin.extractUsage(driver(flux2)), { images: 1, megapixels: 2, input_images: 1, large_output: false, web_search: false, units: 4 });
+  assert.deepEqual(plugin.extractUsage(driver(flux2)), { images: 1, megapixels: 2, input_images: 1, extra_input_images: 0, large_output: false, web_search: false, units: 4 });
+});
+
+test("seedream 5.0 pro edit counts the additional input images once per output image", () => {
+  const edit = decodeNative({ model: "bytedance/seedream/v5/pro/edit", input: { prompt: "x", num_images: 2, image_urls: ["https://a/1.png", "https://a/2.png", "https://a/3.png"] } });
+  const reserved = plugin.extractUsage(driver(edit));
+  assert.equal(reserved.images, 2);
+  assert.equal(reserved.input_images, 3);
+  assert.equal(reserved.extra_input_images, 4);
+  // fal: 0.135 + 0.0045 x (inputs - 1) per 2K output image; the README expression prices the facts linearly.
+  const readme = (f) => (f.large_output ? f.images * 0.135 : f.images * 0.0675) + f.extra_input_images * 0.0045;
+  const vendor = (f) => f.images * ((f.large_output ? 0.135 : 0.0675) + 0.0045 * Math.max(f.input_images - 1, 0));
+  assert.ok(Math.abs(readme(reserved) - vendor(reserved)) < 1e-12);
+  // Settles on the delivered images, also for tasks reserved before the fact existed.
+  const old = Object.assign({}, reserved);
+  delete old.extra_input_images;
+  for (const facts of [reserved, old]) {
+    const task = queryCtx("bytedance/seedream/v5/pro/edit", { facts: facts });
+    const done = plugin.extractUsageOnComplete(task, { status: "SUCCESS" }, { images: [{ url: "https://v3b.fal.media/a.jpg", width: 2048, height: 2048 }] });
+    assert.equal(done.images, 1);
+    assert.equal(done.extra_input_images, 2);
+    assert.ok(Math.abs(readme(done) - vendor(done)) < 1e-12);
+  }
+  // One input image is free.
+  const single = decodeNative({ model: "bytedance/seedream/v5/pro/edit", input: { prompt: "x", image_urls: ["https://a/1.png"] } });
+  assert.equal(plugin.extractUsage(driver(single)).extra_input_images, 0);
 });
 
 test("curated video inputs send duration and resolution", () => {
@@ -246,7 +271,7 @@ test("submit parse keeps the queue app path and reserved facts", () => {
   assert.equal(parsed.taskId, "req-1");
   assert.deepEqual(parsed.taskData, { request_id: "req-1", status: "IN_QUEUE", queue_position: 3 });
   assert.equal(parsed.state.app, "/fal-ai/flux");
-  assert.deepEqual(parsed.state.facts, { images: 1, megapixels: 1, input_images: 0, large_output: false, web_search: false, units: 1 });
+  assert.deepEqual(parsed.state.facts, { images: 1, megapixels: 1, input_images: 0, extra_input_images: 0, large_output: false, web_search: false, units: 1 });
   // Without usable URLs the app is the first two segments of the endpoint.
   const bare = plugin.parseSubmitResponse(driver(decodeNative({ model: "fal-ai/kling-video/v3/pro/text-to-video", input: { prompt: "x" } })), { statusCode: 200, headers: {}, body: { request_id: "r2", status_url: "https://evil.example/x" } });
   assert.equal(bare.state.app, "/fal-ai/kling-video");
@@ -292,14 +317,14 @@ test("task states map to gateway statuses", () => {
 });
 
 test("settlement uses delivered images and fal's billable units", () => {
-  const reserved = { images: 2, megapixels: 2, input_images: 0, large_output: false, web_search: false, units: 2 };
+  const reserved = { images: 2, megapixels: 2, input_images: 0, extra_input_images: 0, large_output: false, web_search: false, units: 2 };
   const task = queryCtx("fal-ai/flux/dev", { app: "/fal-ai/flux", facts: reserved });
   const data = { images: [{ url: "https://v3.fal.media/files/a.png", width: 1920, height: 1080, content_type: "image/png" }] };
-  assert.deepEqual(plugin.extractUsageOnComplete(task, { status: "SUCCESS" }, data), { images: 1, megapixels: 2, input_images: 0, large_output: false, web_search: false, units: 2 });
+  assert.deepEqual(plugin.extractUsageOnComplete(task, { status: "SUCCESS" }, data), { images: 1, megapixels: 2, input_images: 0, extra_input_images: 0, large_output: false, web_search: false, units: 2 });
   assert.deepEqual(plugin.extractUsageOnComplete(task, { status: "SUCCESS", plugin_state: { billable_units: 3 } }, data).units, 3);
   // Seedream 5.0 settles its size tier on the delivered size.
-  const seedream = queryCtx("bytedance/seedream/v5/pro/text-to-image", { facts: { images: 1, megapixels: 4, input_images: 0, large_output: true, web_search: false, units: 2 } });
-  assert.deepEqual(plugin.extractUsageOnComplete(seedream, { status: "SUCCESS" }, { images: [{ url: "https://v3b.fal.media/a.jpg", width: 1536, height: 1536 }] }), { images: 1, megapixels: 3, input_images: 0, large_output: false, web_search: false, units: 1 });
+  const seedream = queryCtx("bytedance/seedream/v5/pro/text-to-image", { facts: { images: 1, megapixels: 4, input_images: 0, extra_input_images: 0, large_output: true, web_search: false, units: 2 } });
+  assert.deepEqual(plugin.extractUsageOnComplete(seedream, { status: "SUCCESS" }, { images: [{ url: "https://v3b.fal.media/a.jpg", width: 1536, height: 1536 }] }), { images: 1, megapixels: 3, input_images: 0, extra_input_images: 0, large_output: false, web_search: false, units: 1 });
   const video = queryCtx("fal-ai/veo3.1", { facts: { seconds: 8, resolution: "720p", audio: true, units: 8 } });
   assert.deepEqual(plugin.extractUsageOnComplete(video, { status: "SUCCESS", plugin_state: { billable_units: 16 } }, { video: { url: "https://v3.fal.media/v.mp4" } }), { seconds: 8, resolution: "720p", audio: true, units: 16 });
   const generic = queryCtx("fal-ai/any-llm", { facts: { units: 1 } });

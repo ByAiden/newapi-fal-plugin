@@ -298,8 +298,53 @@
         "images": 2,
         "megapixels": 32,
         "input_images": 0,
+        "extra_input_images": 0,
         "large_output": true,
         "web_search": true,
+        "units": 4
+      }
+    },
+    {
+      "name": "seedream 5.0 pro edit counts additional input images per output",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "input": {
+              "prompt": "x",
+              "num_images": 2,
+              "image_urls": [
+                "https://a.example/1.png",
+                "https://a.example/2.png",
+                "https://a.example/3.png"
+              ]
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "generate",
+          "model": "bytedance/seedream/v5/pro/edit",
+          "upstreamModel": "bytedance/seedream/v5/pro/edit",
+          "baseUrl": "https://queue.fal.run",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "images": 2,
+        "megapixels": 8,
+        "input_images": 3,
+        "extra_input_images": 4,
+        "large_output": true,
+        "web_search": false,
         "units": 4
       }
     },
@@ -420,15 +465,16 @@
           "queue_position": 0
         },
         "state": {
-          "app": "/fal-ai/flux",
           "facts": {
             "images": 1,
             "megapixels": 1,
             "input_images": 0,
+            "extra_input_images": 0,
             "large_output": false,
             "web_search": false,
             "units": 1
-          }
+          },
+          "app": "/fal-ai/flux"
         }
       }
     },
@@ -849,7 +895,8 @@
         "input_images": 0,
         "large_output": false,
         "web_search": false,
-        "units": 2
+        "units": 2,
+        "extra_input_images": 0
       }
     },
     {
@@ -1121,6 +1168,7 @@
             "images": 2,
             "megapixels": 2,
             "input_images": 0,
+            "extra_input_images": 0,
             "large_output": false,
             "web_search": false,
             "units": 2
@@ -1362,7 +1410,8 @@
         "input_images": 0,
         "large_output": false,
         "web_search": false,
-        "units": 2
+        "units": 2,
+        "extra_input_images": 0
       }
     },
     {

@@ -77,7 +77,7 @@ export const meta = {
     "en": "Run fal.ai model endpoints through fal's queue API, with OpenAI-compatible image and video entry points for popular image and video models",
     "zh": "通过 fal 队列接口调用 fal.ai 模型端点，并为常用图片和视频模型提供 OpenAI 兼容的图片与视频入口"
   },
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": {
     "name": "ByAiden",
     "url": "https://github.com/ByAiden"
@@ -200,6 +200,18 @@ export const meta = {
             "zh": "输入图片单价"
           }
         },
+        "extra_input_images": {
+          "type": "number",
+          "unit": "count",
+          "unitLabel": {
+            "en": "image",
+            "zh": "张"
+          },
+          "description": {
+            "en": "Additional input image unit price",
+            "zh": "额外输入图片单价"
+          }
+        },
         "large_output": {
           "type": "boolean",
           "description": {
@@ -230,6 +242,7 @@ export const meta = {
             "images": 1,
             "megapixels": 1,
             "input_images": 0,
+            "extra_input_images": 0,
             "large_output": false,
             "web_search": false,
             "units": 1
@@ -241,6 +254,7 @@ export const meta = {
             "images": 2,
             "megapixels": 32,
             "input_images": 0,
+            "extra_input_images": 0,
             "large_output": true,
             "web_search": false,
             "units": 4
@@ -252,6 +266,7 @@ export const meta = {
             "images": 1,
             "megapixels": 4,
             "input_images": 3,
+            "extra_input_images": 2,
             "large_output": true,
             "web_search": false,
             "units": 2
@@ -604,6 +619,7 @@ function imageRequest(model, source) {
     images: images,
     megapixels: Math.min(images * megapixelsOf(width, height), MAX_IMAGES),
     input_images: inputs,
+    extra_input_images: extraInputImages(images, inputs),
     large_output: large,
     web_search: webSearch,
     units: 0,
@@ -626,6 +642,13 @@ function imageUnits(model, facts) {
   else if (family === "seedream45") units = facts.images;
   else units = facts.images * (facts.large_output ? 2 : 1);
   return Math.min(units, MAX_UNITS);
+}
+
+// Input images after the first, counted once per output image: fal prices
+// them on every output image (Seedream 5.0 Pro edit), so a price per unit of
+// this fact matches fal's rule exactly.
+function extraInputImages(images, inputs) {
+  return (Number(images) || 0) * Math.max((Number(inputs) || 0) - 1, 0);
 }
 
 function durationSeconds(value, spec) {
@@ -720,7 +743,7 @@ function falRequest(model, source) {
 function profileFacts(kind, facts) {
   if (kind === "image") {
     if (present(facts.images)) return facts;
-    return { images: 1, megapixels: 1, input_images: 0, large_output: false, web_search: false, units: facts.units };
+    return { images: 1, megapixels: 1, input_images: 0, extra_input_images: 0, large_output: false, web_search: false, units: facts.units };
   }
   if (kind === "video") {
     if (present(facts.seconds)) return facts;
@@ -1116,6 +1139,7 @@ export function extractUsageOnComplete(task, result, data) {
       facts.units = imageUnits(model, facts);
     }
   }
+  if (kind === "image") facts.extra_input_images = extraInputImages(facts.images, facts.input_images);
   if (units) facts.units = Math.min(units, MAX_UNITS);
   return facts;
 }
